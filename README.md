@@ -1,5 +1,7 @@
 # beav-hacks-2026
 
+> **Note:** This project was built for BeavHacks 2026, a 24-hour hackathon hosted at Oregon State University.
+
 LoRA fine-tune of [NVIDIA-Nemotron-Nano-12B-v2-VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16) on the [MMFR](https://huggingface.co/datasets/AnnaGao/MMFR-Dataset) fake-vs-real image dataset, plus a vLLM-served inference path.
 
 ## Team (alphabetical by last name)
@@ -95,9 +97,45 @@ python inference/chat_image.py path/to/image.jpg               # single image
 
 The client prefills `<think>\n` and uses `continue_final_message` so vLLM emits the reasoning block deterministically.
 
+## Desktop App
+
+The [desktop-app/](desktop-app/) directory contains an Electron app (built with electron-vite + React) that captures screenshots and runs AI detection analysis against the inference server.
+
+### Prerequisites
+
+- Node.js 18+
+- The vLLM inference server running (see [Serve & query](#serve--query) above)
+
+### Install dependencies
+
+```bash
+cd desktop-app
+npm install
+```
+
+### Run in development mode
+
+```bash
+npm run dev
+```
+
+### Build a distributable
+
+```bash
+npm run package
+```
+
+The packaged app lands in `desktop-app/out/`.
+
+---
+
 ## Notes / gotchas
 
 - The Nemotron-Nano-VL tokenizer ships without a `pad_token` and BPE-splits `<|im_start|>`/`<|im_end|>`; the loader sets `pad_token = eos_token` and the collate rebuilds labels from a re-rendered prefix instead of relying on marker scans.
 - The model's forward pass requires `image_flags` of shape `(num_tiles, 1)` matching `pixel_values.shape[0]`; the collate adds it.
 - C-RADIOv2-H's `summary_idxs` buffer can be silently filled with uninitialized GPU memory under FSDP2 meta-device init — `patch_radio.py` rebuilds it from a saved Python list at the top of `forward()`.
 - Nemotron-H is a Mamba/SSM hybrid; its `CausalLMOutput` has no `past_key_values`. The wrapper's output assembly is patched to use `getattr(..., None)`.
+
+---
+
+**Disclosure:** Agentic AI coding tools were used to assist with troubleshooting the fine-tuning pipeline and for creating the desktop application GUI.
