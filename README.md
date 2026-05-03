@@ -2,6 +2,13 @@
 
 LoRA fine-tune of [NVIDIA-Nemotron-Nano-12B-v2-VL](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16) on the [MMFR](https://huggingface.co/datasets/AnnaGao/MMFR-Dataset) fake-vs-real image dataset, plus a vLLM-served inference path.
 
+## Team (alphabetical by last name)
+
+- Kevin Chang
+- Digesh Chitrakar
+- Josh Negreanu
+- Jose Sanchez-Gonzalez
+
 The fine-tuned model takes a single image and emits a chain-of-thought verdict:
 
 ```
@@ -21,13 +28,11 @@ The fine-tuned model takes a single image and emits a chain-of-thought verdict:
   - [automodel_lora.sh](finetuning/automodel_lora.sh) — launcher that sets `HF_HOME`, `PYTHONPATH`, and execs `automodel`
   - [datasets.py](finetuning/datasets.py) — streams MMFR shards, builds the `<think>…</think> + JSON` conversation format, custom collate that rebuilds labels via prefix-diff (Nemotron's tokenizer BPE-splits the chat markers)
   - [patch_radio.py](finetuning/patch_radio.py) — patches the cached `radio_model.py` and Nemotron VL `modeling.py` so they survive FSDP2 meta-device init and the Mamba/SSM language head's missing KV cache
-  - [prepare_mmfr.py](finetuning/prepare_mmfr.py) — optional offline pre-bake into a local Arrow dataset
 - [inference/](inference/) — merge + serve + clients
   - [merge_lora.py](inference/merge_lora.py) — state-dict-level LoRA merge that skips model instantiation (avoids meta-tensor issues with custom-code multimodal models)
   - [serve_mmfr.sh](inference/serve_mmfr.sh) — `vllm serve` wrapper for the merged checkpoint (port 5000, served as `nemotron-vl`)
   - [chat_image.py](inference/chat_image.py) — send an image (or a directory of them) to the running server and print the verdict
 - [Automodel/](Automodel/) — git submodule fork of NeMo-AutoModel
-- [data/mmfr_samples/](data/mmfr_samples/) — small set of held-out samples for sanity checks
 
 ## Setup
 
@@ -42,7 +47,7 @@ export HF_HOME=/nfs/hpc/share/$USER/hf_cache
 pip install -e Automodel
 pip install vllm openai huggingface_hub safetensors
 
-# patch the cached custom code (safe to re-run; idempotent)
+# patch the cached custom code (safe to re-run)
 python finetuning/patch_radio.py
 ```
 
