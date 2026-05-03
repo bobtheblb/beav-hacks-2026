@@ -1,0 +1,4 @@
+[submodule "Automodel"]
+	path = Automodel
+	url = https://github.com/bobtheblb/Automodel.git
+    branch = main
