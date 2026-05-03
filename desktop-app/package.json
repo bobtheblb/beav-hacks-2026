@@ -1,0 +1,34 @@
+{
+  "name": "artifact",
+  "version": "1.0.0",
+  "description": "AI detection analysis via screen capture",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "unset ELECTRON_RUN_AS_NODE; electron-vite dev",
+    "build": "unset ELECTRON_RUN_AS_NODE; electron-vite build",
+    "preview": "unset ELECTRON_RUN_AS_NODE; electron-vite preview",
+    "package": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "openai": "^4.52.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.artifact.app",
+    "productName": "Artifact",
+    "files": ["out/**/*"],
+    "mac": {
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
