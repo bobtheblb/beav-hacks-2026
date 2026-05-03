@@ -5,7 +5,7 @@ os.environ["HF_HOME"] = f"/nfs/hpc/share/{os.environ['USER']}/hf_cache"
 from vllm import LLM, SamplingParams
 
 llm = LLM(
-    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8",
     trust_remote_code=True,
     dtype="auto",
 )
