@@ -1,70 +1,100 @@
-"""Sanity-check the MMFR subset built by prepare_mmfr.py.
+"""Sanity-check the MMFR dataset produced by make_cord_v2_dataset().
 
-Prints schema + class balance, dumps all images to data/mmfr_samples/<label>/<idx>.{png|jpg},
-and writes a browsable markdown index at data/mmfr_samples/INDEX.md.
+Calls the dataset function directly (no on-disk Arrow dump needed), then dumps
+all images to data/mmfr_samples/<class>/<idx>.{png|jpg} and writes a browsable
+markdown index at data/mmfr_samples/INDEX.md.
 """
 
+import argparse
+import json
+import re
 from collections import Counter
 from pathlib import Path
 
-from datasets import load_from_disk
-
-from finetuning.mmfr_dataset import USER_PROMPT, make_mmfr_dataset
+from finetuning.datasets import USER_PROMPT, make_cord_v2_dataset
 
 REPO = Path(__file__).resolve().parent.parent
-DS_PATH = REPO / "data" / "mmfr_subset"
 SAMPLES_DIR = REPO / "data" / "mmfr_samples"
 INDEX_MD = SAMPLES_DIR / "INDEX.md"
 
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+
+
+def _parse_assistant(text):
+    think = (m.group(1).strip() if (m := _THINK_RE.search(text)) else "")
+    payload = (m.group(1) if (m := _JSON_RE.search(text)) else "{}")
+    try:
+        obj = json.loads(payload)
+    except json.JSONDecodeError:
+        obj = {}
+    return think, obj
+
 
 def main():
-    ds = load_from_disk(str(DS_PATH))
-    print(f"=== Dataset @ {DS_PATH.relative_to(REPO)} ===")
-    print(f"  rows:     {len(ds)}")
-    print(f"  columns:  {ds.column_names}")
-    print(f"  features: {ds.features}")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--split", choices=["train", "validation"], default="train")
+    ap.add_argument("--n-train-per-class", type=int, default=100)
+    ap.add_argument("--n-val-per-class", type=int, default=20)
+    args = ap.parse_args()
 
-    # class balance + reasoning length
-    counts = Counter(ds["label_text"])
-    print(f"\n  class balance: {dict(counts)}")
-    rlens = [len(r) for r in ds["reasoning"]]
-    print(f"  reasoning chars: min={min(rlens)}  median={sorted(rlens)[len(rlens)//2]}  max={max(rlens)}")
-    img_sizes = Counter(ex["image"].size for ex in ds.select(range(len(ds))))
-    top_sizes = ", ".join(f"{s}×{c}" for s, c in img_sizes.most_common(5))
-    print(f"  top image sizes: {top_sizes}")
+    print(
+        f"=== make_cord_v2_dataset(split={args.split!r}, "
+        f"n_train_per_class={args.n_train_per_class}, n_val_per_class={args.n_val_per_class}) ==="
+    )
+    convs = make_cord_v2_dataset(
+        split=args.split,
+        n_train_per_class=args.n_train_per_class,
+        n_val_per_class=args.n_val_per_class,
+    )
+    print(f"  rows: {len(convs)}")
 
-    # dump every image + write markdown index
+    by_class: dict[str, list[int]] = {"ai_generated": [], "real": []}
+    rlens, sizes = [], Counter()
+    for i, sample in enumerate(convs):
+        msg = sample["conversation"]
+        img = msg[0]["content"][0]["image"]
+        think, obj = _parse_assistant(msg[1]["content"][0]["text"])
+        status = obj.get("status", "unknown")
+        by_class.setdefault(status, []).append(i)
+        rlens.append(len(think))
+        sizes[img.size] += 1
+
+    print(f"  class balance: {{'ai_generated': {len(by_class['ai_generated'])}, 'real': {len(by_class['real'])}}}")
+    if rlens:
+        rlens.sort()
+        print(f"  reasoning chars: min={rlens[0]}  median={rlens[len(rlens)//2]}  max={rlens[-1]}")
+    print(f"  top image sizes: {', '.join(f'{s}×{c}' for s, c in sizes.most_common(5))}")
+
+    # dump images + write markdown index
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
-    (SAMPLES_DIR / "fake").mkdir(exist_ok=True)
+    (SAMPLES_DIR / "ai_generated").mkdir(exist_ok=True)
     (SAMPLES_DIR / "real").mkdir(exist_ok=True)
-    for old in SAMPLES_DIR.glob("*.png"):
-        old.unlink()
 
-    md = ["# MMFR subset — browse all 200 samples\n"]
-    md.append(f"Class balance: **{counts['fake']} fake**, **{counts['real']} real**.\n")
+    md = ["# MMFR subset — browse all samples\n"]
+    md.append(
+        f"Class balance: **{len(by_class['ai_generated'])} ai_generated**, "
+        f"**{len(by_class['real'])} real**.\n"
+    )
     md.append(f"User prompt:\n\n```\n{USER_PROMPT}\n```\n")
 
-    convs = make_mmfr_dataset()
-    assistant_targets = [c["conversation"][1]["content"][0]["text"] for c in convs]
-
-    by_class: dict[str, list[int]] = {"fake": [], "real": []}
-    for i in range(len(ds)):
-        by_class[ds[i]["label_text"]].append(i)
-
-    for cls in ("fake", "real"):
-        md.append(f"\n---\n\n## {cls.upper()} ({len(by_class[cls])})\n")
-        for n, i in enumerate(by_class[cls]):
-            ex = ds[i]
-            ext = "png" if cls == "fake" else "jpg"
+    for cls, idxs in by_class.items():
+        if not idxs:
+            continue
+        md.append(f"\n---\n\n## {cls.upper()} ({len(idxs)})\n")
+        for n, i in enumerate(idxs):
+            img = convs[i]["conversation"][0]["content"][0]["image"]
+            assistant_text = convs[i]["conversation"][1]["content"][0]["text"]
+            ext = "png" if cls == "ai_generated" else "jpg"
             rel = f"{cls}/{n:03d}.{ext}"
-            ex["image"].save(SAMPLES_DIR / rel)
-
-            md.append(f"\n### {cls} #{n}  (row {i}, {ex['image'].size[0]}×{ex['image'].size[1]})\n")
+            img.save(SAMPLES_DIR / rel)
+            md.append(f"\n### {cls} #{n}  (row {i}, {img.size[0]}×{img.size[1]})\n")
             md.append(f"![{rel}]({rel})\n")
-            md.append(f"\n**Assistant target:**\n\n````\n{assistant_targets[i]}\n````\n")
+            md.append(f"\n**Assistant target:**\n\n````\n{assistant_text}\n````\n")
 
     INDEX_MD.write_text("\n".join(md))
-    print(f"\n  wrote {len(ds)} images under {SAMPLES_DIR.relative_to(REPO)}/{{fake,real}}/")
+    total = sum(len(v) for v in by_class.values())
+    print(f"\n  wrote {total} images under {SAMPLES_DIR.relative_to(REPO)}/{{ai_generated,real}}/")
     print(f"  wrote browsable index: {INDEX_MD.relative_to(REPO)}")
 
 

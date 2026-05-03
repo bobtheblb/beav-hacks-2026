@@ -1,11 +1,19 @@
 recipe: FinetuneRecipeForVLM
 
+# Pass-through to wandb.init(**wandb). Auth via `wandb login` or WANDB_API_KEY.
+# Delete this block to disable wandb logging entirely.
+wandb:
+  project: mmfr-nemotron
+  name: nemotron-12b-vl-mmfr-binary-v1
+  entity: dchitrak-oregon-state-university
+  tags: [mmfr, nemotron-nano-vl, lora, fake-vs-real]
+
 step_scheduler:
   global_batch_size: 1
   local_batch_size: 1
-  ckpt_every_steps: 100000
-  val_every_steps: 100000
-  num_epochs: 1
+  ckpt_every_steps: 100  # fewer save events = smaller window for mid-save kill to corrupt
+  val_every_steps: 300  # will run every x number of gradient steps
+  max_steps: 100000000000
 
 dist_env:
   backend: nccl
@@ -23,15 +31,18 @@ model:
   trust_remote_code: true
 
 processor:
-  _target_: transformers.AutoProcessor.from_pretrained
+  _target_: finetuning.datasets.load_processor_with_pad
   pretrained_model_name_or_path: nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16
   trust_remote_code: true
 
 checkpoint:
   enabled: true
-  checkpoint_dir: checkpoints/mmfr_lora
+  checkpoint_dir: /nfs/hpc/share/chitrakd/checkpoints/mmfr_lora
   model_save_format: safetensors
   save_consolidated: true
+  # Stage save artifacts on NFS instead of /tmp (tmpfs/RAM-backed, often <8 GB).
+  # Avoids partial writes when a 12B-LoRA checkpoint briefly stages gigabytes.
+  staging_dir: /nfs/hpc/share/chitrakd/ckpt_staging
 
 peft:
   _target_: nemo_automodel.components._peft.lora.PeftConfig
@@ -46,19 +57,34 @@ distributed:
   tp_size: 1
   cp_size: 1
   sequence_parallel: false
-  activation_checkpointing: true
+  activation_checkpointing: false
 
 loss_fn:
   _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
 
 dataset:
-  _target_: finetuning.mmfr_dataset.make_mmfr_dataset
-  path_or_dataset: data/mmfr_subset
+  _target_: finetuning.datasets.make_cord_v2_dataset
+  path_or_dataset: AnnaGao/MMFR-Dataset
   split: train
+  n_train_per_class: 3000
+  n_val_per_class: 300
 
 dataloader:
   _target_: torchdata.stateful_dataloader.StatefulDataLoader
-  shuffle: true
+  collate_fn:
+    _target_: finetuning.datasets.nemotron_vl_collate_fn
+
+validation_dataset:
+  _target_: finetuning.datasets.make_cord_v2_dataset
+  path_or_dataset: AnnaGao/MMFR-Dataset
+  split: validation
+  n_train_per_class: 3000
+  n_val_per_class: 300
+
+validation_dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn:
+    _target_: finetuning.datasets.nemotron_vl_collate_fn
 
 optimizer:
   _target_: torch.optim.AdamW
