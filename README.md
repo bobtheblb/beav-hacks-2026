@@ -11,7 +11,7 @@ LoRA fine-tune of [NVIDIA-Nemotron-Nano-12B-v2-VL](https://huggingface.co/nvidia
 
 The fine-tuned model takes a single image and emits a chain-of-thought verdict:
 
-```
+````
 <think>
 {visual analysis of the image}
 </think>
@@ -19,7 +19,7 @@ The fine-tuned model takes a single image and emits a chain-of-thought verdict:
 ```json
 {"status": "ai_generated" | "real", "confidence": 0.0-1.0, "reason": "..."}
 ```
-```
+````
 
 ## Layout
 
