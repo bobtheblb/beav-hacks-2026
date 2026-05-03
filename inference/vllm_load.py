@@ -1,28 +1,30 @@
 import os
 
 os.environ["HF_HOME"] = f"/nfs/hpc/share/{os.environ['USER']}/hf_cache"
+os.environ["XDG_CACHE_HOME"] = f"/nfs/hpc/share/{os.environ['USER']}/.cache"
+os.environ["FLASHINFER_WORKSPACE_BASE"] = f"/nfs/hpc/share/{os.environ['USER']}"
 
 from vllm import LLM, SamplingParams
 
-llm = LLM(
-    model="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-    trust_remote_code=True,
-    dtype="auto",
-)
 
-print("Model ready")
+def main():
+    llm = LLM(
+        model="nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8",
+        trust_remote_code=True,
+        dtype="auto",
+        max_model_len=131072,
+        kv_cache_dtype="fp8",
+    )
 
-params = SamplingParams(temperature=0.6, max_tokens=200)
+    print("Model ready")
 
-single = llm.generate(["Give me 3 bullet points about vLLM."], sampling_params=params)
-print(single[0].outputs[0].text)
+    params = SamplingParams(temperature=0.6, max_tokens=200)
 
-# prompts = [
-#     "Hello, my name is",
-#     "The capital of France is",
-#     "Explain quantum computing in simple terms:",
-# ]
-# outputs = llm.generate(prompts, sampling_params=params)
-# for i, out in enumerate(outputs):
-#     print(f"\nPrompt {i+1}: {out.prompt!r}")
-#     print(out.outputs[0].text)
+    single = llm.generate(
+        ["Give me 3 bullet points about vLLM."], sampling_params=params
+    )
+    print(single[0].outputs[0].text)
+
+
+if __name__ == "__main__":
+    main()
